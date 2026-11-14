@@ -1,1023 +1,630 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>荒野求生：贝爷食谱可视化</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <style>
-        body {
-            font-family: 'Noto Sans SC', sans-serif;
-            background-color: #0c0d0c;
-            color: #e2e8f0;
-        }
-        .wild-font {
-            font-family: 'ZCOOL+KuaiLe', cursive;
-        }
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #1a202c;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #2d3748;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #4a5568;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c1310">
+<link rel="icon" href="data:,">
+<meta name="description" content="荒野求生 · 贝爷食谱图鉴：30 份极限补给，按风险、热量与地域归档。">
+<title>荒野求生 · 贝爷食谱图鉴</title>
+<link rel="stylesheet" href="assets/scenes.css">
+<style>
+/* ============================================================
+   设计系统：墨绿底 60% / 深林面 30% / 篝火橙 10%
+   ============================================================ */
+:root{
+  --ink:#0c1310;
+  --ink-2:#101a15;
+  --surface:#152019;
+  --surface-2:#1b2820;
+  --line:rgba(216,224,208,.13);
+  --line-strong:rgba(216,224,208,.26);
+  --bone:#e8e6da;
+  --muted:#9aa89a;
+  --muted-2:#6f7e72;
+  --amber:#e5a24a;
+  --amber-soft:rgba(229,162,74,.14);
+  --moss:#8fb573;
+  --risk-low:#8fb573;
+  --risk-mid:#e2c170;
+  --risk-high:#e08b52;
+  --risk-max:#d9634f;
+  --font-sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --font-mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  --wrap:1240px;
+  --radius:16px;
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --shadow:0 24px 60px -24px rgba(0,0,0,.85);
+}
+*,*::before,*::after{box-sizing:border-box}
+/* 作者样式里的 display 会盖过 UA 的 [hidden]，视图切换必须显式兜底 */
+[hidden]{display:none !important}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--ink);color:var(--bone);
+  font-family:var(--font-sans);font-size:16px;line-height:1.75;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+body.is-locked{overflow:hidden}
+img{max-width:100%;display:block}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+a{color:inherit;text-decoration:none}
+::selection{background:var(--amber);color:var(--ink)}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+.wrap{width:min(var(--wrap),calc(100% - 48px));margin-inline:auto}
+.eyebrow{
+  font:600 11px/1.4 var(--font-mono);letter-spacing:.24em;text-transform:uppercase;
+  color:var(--muted);display:flex;align-items:center;gap:10px;margin:0 0 22px;
+}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 12px var(--amber);flex:none}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  padding:14px 26px;border-radius:999px;font-size:14px;font-weight:700;letter-spacing:.02em;
+  transition:transform .25s var(--ease),background .25s,color .25s,border-color .25s,box-shadow .25s;
+  white-space:nowrap;
+}
+.btn:hover{transform:translateY(-2px)}
+.btn--primary{background:var(--amber);color:#1b1409;box-shadow:0 8px 30px -10px rgba(229,162,74,.65)}
+.btn--primary:hover{background:#f0b463;box-shadow:0 14px 36px -10px rgba(229,162,74,.8)}
+.btn--ghost{border:1px solid var(--line-strong);color:var(--bone);background:rgba(12,19,16,.35);backdrop-filter:blur(8px)}
+.btn--ghost:hover{border-color:var(--amber);color:var(--amber)}
+.btn--sm{padding:9px 18px;font-size:12px}
+
+/* 颗粒 + 顶部进度 */
+.grain{
+  position:fixed;inset:0;z-index:90;pointer-events:none;opacity:.055;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.progress{position:fixed;top:0;left:0;height:2px;width:100%;z-index:95;background:transparent;pointer-events:none}
+.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--moss),var(--amber));box-shadow:0 0 12px var(--amber)}
+
+/* 导航 */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:80;
+  display:flex;align-items:center;justify-content:space-between;gap:24px;
+  padding:20px max(24px,calc((100vw - var(--wrap))/2));
+  transition:padding .35s var(--ease),background .35s,border-color .35s;
+  border-bottom:1px solid transparent;
+}
+.nav.is-compact{padding-top:11px;padding-bottom:11px;background:rgba(10,17,13,.86);backdrop-filter:blur(18px);border-bottom-color:var(--line)}
+.brand{display:flex;align-items:center;gap:12px}
+.brand__mark{
+  width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none;
+  background:var(--amber);color:#1b1409;font:800 20px/1 var(--font-mono);
+  transform:rotate(-7deg);transition:transform .35s var(--ease);
+}
+.brand:hover .brand__mark{transform:rotate(0)}
+.brand__text{display:flex;flex-direction:column;line-height:1.25}
+.brand__text strong{font:800 14px/1.2 var(--font-mono);letter-spacing:.14em}
+.brand__text small{font:500 9px/1.6 var(--font-mono);letter-spacing:.22em;color:var(--muted)}
+.nav__links{display:flex;gap:34px;font-size:13px;color:var(--muted)}
+.nav__links a{position:relative;transition:color .2s}
+.nav__links a::after{content:"";position:absolute;left:0;right:100%;bottom:-6px;height:1px;background:var(--amber);transition:right .3s var(--ease)}
+.nav__links a:hover{color:var(--bone)}
+.nav__links a:hover::after{right:0}
+.nav__right{display:flex;align-items:center;gap:12px}
+
+/* ============================================================
+   Hero：六层视差
+   ============================================================ */
+.hero{position:relative;min-height:100vh;min-height:100svh;display:flex;align-items:center;overflow:hidden;isolation:isolate}
+.hero__stage{position:absolute;inset:-8% -4%;z-index:-1;pointer-events:none}
+.layer{position:absolute;inset:0;will-change:transform;background-repeat:no-repeat;background-size:cover;background-position:center 58%}
+.layer--sky{background:linear-gradient(180deg,#0a1310 0%,#16241d 42%,#2b3a2d 72%,#0c1310 100%)}
+.layer--far{background-image:var(--img-hero);filter:blur(6px) brightness(.42) saturate(.7);opacity:.85;transform:scale(1.22)}
+.layer--main{background-image:var(--img-hero);opacity:.92;filter:brightness(.78) saturate(.88)}
+.layer--ridge{background:transparent}
+.layer--ridge svg{position:absolute;left:-2%;bottom:-2%;width:104%;height:42%}
+.layer--fog{
+  background:
+    radial-gradient(60% 34% at 22% 66%,rgba(206,222,204,.16),transparent 70%),
+    radial-gradient(50% 26% at 78% 72%,rgba(206,222,204,.12),transparent 72%);
+  animation:drift 22s ease-in-out infinite alternate;
+}
+@keyframes drift{from{transform:translate3d(-2%,0,0)}to{transform:translate3d(3%,-1.5%,0)}}
+.layer--grass{background:transparent}
+.layer--grass svg{position:absolute;left:-2%;bottom:-4%;width:104%;height:34%}
+.hero__vignette{
+  position:absolute;inset:0;
+  background:linear-gradient(90deg,rgba(8,14,11,.92) 0%,rgba(8,14,11,.6) 38%,rgba(8,14,11,.12) 72%,rgba(8,14,11,.55) 100%),
+             linear-gradient(180deg,rgba(8,14,11,.55) 0%,transparent 30%,transparent 55%,var(--ink) 100%);
+}
+.hero__inner{
+  width:min(var(--wrap),calc(100% - 48px));margin-inline:auto;
+  display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:60px;align-items:center;
+  padding:120px 0 90px;
+}
+.hero__copy{will-change:transform,opacity}
+.hero h1{
+  margin:0 0 26px;font-size:clamp(46px,7vw,96px);line-height:1.06;font-weight:900;letter-spacing:-.03em;
+  text-wrap:balance;
+}
+.hero h1 span{color:var(--amber);display:inline-block}
+.lede{margin:0 0 34px;max-width:520px;color:#c4cfc2;font-size:16px;line-height:1.9}
+.hero__actions{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:52px}
+.hero__stats{display:flex;gap:0;margin:0;border-top:1px solid var(--line);padding-top:22px;max-width:560px}
+.hero__stats div{flex:1;padding-right:18px;border-right:1px solid var(--line);margin-right:18px}
+.hero__stats div:last-child{border-right:0;margin-right:0}
+.hero__stats dt{font:800 28px/1.1 var(--font-mono);color:var(--bone);letter-spacing:-.04em}
+.hero__stats dd{margin:6px 0 0;font-size:11px;letter-spacing:.12em;color:var(--muted)}
+/* Hero 右侧档案卡 */
+.hero__plate{
+  position:relative;justify-self:end;width:280px;transform:rotate(3deg);
+  transition:transform .5s var(--ease);will-change:transform;
+}
+.hero__plate::before{
+  content:"";position:absolute;inset:-14px -14px 30px 14px;border:1px solid var(--line-strong);border-radius:4px;
+}
+.plate__img{
+  aspect-ratio:2/3;border-radius:3px;background-image:var(--img-explorer);background-size:cover;background-position:center;
+  box-shadow:var(--shadow);filter:saturate(.9) contrast(1.04);
+}
+.plate__label{
+  position:absolute;bottom:-14px;left:-18px;background:var(--bone);color:var(--ink);
+  padding:9px 14px;font:700 10px/1.3 var(--font-mono);letter-spacing:.14em;
+  box-shadow:0 8px 24px rgba(0,0,0,.5);
+}
+.hero__hint{
+  position:absolute;bottom:26px;left:50%;transform:translateX(-50%);
+  font:600 10px/1 var(--font-mono);letter-spacing:.28em;color:var(--muted);
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+}
+.hero__hint span{width:1px;height:36px;background:linear-gradient(var(--amber),transparent);animation:hint 2.2s ease-in-out infinite}
+@keyframes hint{0%,100%{opacity:.3;transform:scaleY(.6)}50%{opacity:1;transform:scaleY(1)}}
+
+/* ============================================================
+   分镜：sticky 背景 + 滚动切换场景
+   ============================================================ */
+.chapters{position:relative;background:var(--ink)}
+.chapters__bg{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden}
+.ch-scene{
+  position:absolute;inset:0;background-size:cover;background-position:center;
+  opacity:0;transform:scale(1.12);transition:opacity .9s var(--ease);will-change:transform,opacity;
+  filter:saturate(.82) brightness(.72);
+}
+.ch-scene[data-scene="jungle"]{background-image:var(--img-jungle)}
+.ch-scene[data-scene="desert"]{background-image:var(--img-desert)}
+.ch-scene[data-scene="snow"]{background-image:var(--img-snow)}
+.ch-scene[data-scene="coast"]{background-image:var(--img-coast)}
+.ch-scene.is-active{opacity:1}
+.chapters__shade{
+  position:absolute;inset:0;
+  background:linear-gradient(90deg,rgba(8,14,11,.92),rgba(8,14,11,.55) 45%,rgba(8,14,11,.18)),
+             linear-gradient(180deg,var(--ink),transparent 22%,transparent 70%,var(--ink));
+}
+.chapters__inner{position:relative;margin-top:-100vh;margin-top:-100svh}
+.chapter{min-height:100vh;min-height:100svh;display:flex;flex-direction:column;justify-content:center;padding:120px 0}
+.chapter__inner{width:min(var(--wrap),calc(100% - 48px));margin-inline:auto;max-width:660px}
+.chapter__tag{font:700 11px/1 var(--font-mono);letter-spacing:.22em;color:var(--amber);margin:0 0 24px;display:flex;align-items:center;gap:14px}
+.chapter__tag::after{content:"";width:52px;height:1px;background:var(--amber);opacity:.6}
+.chapter h2{margin:0 0 24px;font-size:clamp(32px,4.6vw,60px);line-height:1.22;font-weight:900;letter-spacing:-.02em;text-wrap:balance}
+.chapter p{margin:0 0 30px;max-width:520px;color:#c2cdc0;font-size:16px;line-height:1.95}
+.chapter__meta{font:600 11px/1.6 var(--font-mono);letter-spacing:.14em;color:var(--muted);border-left:2px solid var(--amber);padding-left:14px}
+.reveal{opacity:0;transform:translateY(34px);transition:opacity .8s var(--ease),transform .8s var(--ease)}
+.reveal.is-in{opacity:1;transform:none}
+
+/* ============================================================
+   图鉴
+   ============================================================ */
+.archive{position:relative;padding:120px 0 130px;background:var(--ink);
+  background-image:radial-gradient(70% 40% at 50% 0%,rgba(143,181,115,.07),transparent 70%);}
+.section-head{margin-bottom:44px}
+.section-head h2{margin:0 0 14px;font-size:clamp(34px,5vw,58px);line-height:1.15;font-weight:900;letter-spacing:-.03em}
+.section-head p:last-child{margin:0;color:var(--muted);font-size:15px}
+.toolbar{display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between;align-items:flex-start;margin-bottom:36px;
+  padding-bottom:26px;border-bottom:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;max-width:760px}
+.chip{
+  padding:8px 15px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--muted);
+  transition:all .22s var(--ease);white-space:nowrap;
+}
+.chip:hover{border-color:var(--line-strong);color:var(--bone)}
+.chip.is-active{background:var(--amber);border-color:var(--amber);color:#1b1409;font-weight:700}
+.toolbar__tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.search{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:0 14px;transition:border-color .2s}
+.search:focus-within{border-color:var(--amber)}
+.search svg{width:15px;height:15px;color:var(--muted);flex:none}
+.search input{width:190px;padding:10px 0;background:none;border:0;outline:none;font-size:13px}
+.search input::placeholder{color:var(--muted-2)}
+.switch{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
+.switch button{padding:7px 16px;border-radius:999px;font-size:12px;color:var(--muted);transition:all .22s}
+.switch button.is-active{background:var(--surface-2);color:var(--bone);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:22px}
+.card{
+  position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;cursor:pointer;text-align:left;width:100%;padding:0;
+  transition:transform .35s var(--ease),border-color .35s,box-shadow .35s;
+  will-change:transform;
+}
+.card:hover{border-color:rgba(229,162,74,.55);box-shadow:var(--shadow)}
+.card__visual{
+  position:relative;aspect-ratio:16/10;background-size:cover;background-position:center;overflow:hidden;
+  filter:saturate(.75) brightness(.72);transition:filter .4s,transform .5s var(--ease);
+}
+.card:hover .card__visual{filter:saturate(.95) brightness(.86);transform:scale(1.04)}
+.card__visual::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,rgba(12,19,16,.92))}
+.card__glyph{position:absolute;inset:0;z-index:2;display:grid;place-items:center}
+.card__glyph svg{width:76px;height:76px;opacity:.88;transition:transform .5s var(--ease),opacity .4s}
+.card:hover .card__glyph svg{transform:scale(1.12) rotate(-5deg);opacity:1}
+.card__no{position:absolute;top:12px;left:14px;z-index:3;font:700 10px/1 var(--font-mono);letter-spacing:.16em;color:rgba(232,230,218,.75)}
+.card__risk{position:absolute;top:10px;right:10px;z-index:3;font-size:10px;font-weight:700;letter-spacing:.06em;padding:5px 10px;border-radius:999px;backdrop-filter:blur(8px);border:1px solid currentColor}
+.risk--低{color:var(--risk-low);background:rgba(143,181,115,.12)}
+.risk--中{color:var(--risk-mid);background:rgba(226,193,112,.12)}
+.risk--高{color:var(--risk-high);background:rgba(224,139,82,.12)}
+.risk--极高{color:var(--risk-max);background:rgba(217,99,79,.16)}
+.card__body{padding:18px 18px 20px}
+.card__cat{font:600 10px/1 var(--font-mono);letter-spacing:.16em;color:var(--moss);margin:0 0 10px}
+.card__name{margin:0 0 6px;font-size:17px;font-weight:800;line-height:1.4}
+.card__en{margin:0 0 14px;font:500 11px/1.4 var(--font-mono);color:var(--muted-2);letter-spacing:.02em}
+.card__quote{margin:0 0 16px;font-size:12px;line-height:1.7;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card__foot{display:flex;justify-content:space-between;align-items:center;padding-top:13px;border-top:1px solid var(--line);font:600 10px/1 var(--font-mono);letter-spacing:.08em;color:var(--muted)}
+.card__kcal{color:var(--amber)}
+.empty{padding:80px 0;text-align:center;color:var(--muted)}
+.empty button{color:var(--amber);text-decoration:underline;margin-left:6px}
+
+/* 关系图 */
+.graph{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;overflow:hidden}
+.graph__head{display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;margin-bottom:8px}
+.graph__head h3{margin:0;font-size:18px}
+.graph__legend{display:flex;flex-wrap:wrap;gap:16px;font-size:11px;color:var(--muted)}
+.graph__legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.graph svg{width:100%;height:auto;max-height:620px;display:block}
+.graph .link{stroke:rgba(200,220,190,.13);fill:none;transition:stroke .25s,stroke-width .25s}
+.graph .link.is-hot{stroke:var(--amber);stroke-width:1.6}
+.graph .node{cursor:pointer;transition:opacity .25s}
+.graph .node circle{transition:r .2s,opacity .2s}
+.graph .node text{font:500 10px var(--font-sans);fill:var(--muted);transition:fill .2s}
+.graph .node:hover text,.graph .node.is-hot text{fill:var(--bone)}
+.graph.is-dim .node:not(.is-hot){opacity:.24}
+.graph__note{margin:14px 0 0;font-size:12px;color:var(--muted);line-height:1.8}
+
+/* ============================================================
+   装备 / 3D
+   ============================================================ */
+.kit{position:relative;padding:120px 0 140px;background:var(--ink-2);border-top:1px solid var(--line);overflow:hidden}
+.kit::before{content:"";position:absolute;inset:0;background-image:var(--img-jungle);background-size:cover;background-position:center;opacity:.13;filter:blur(2px)}
+.kit::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--ink-2) 20%,rgba(16,26,21,.72) 60%,rgba(16,26,21,.45))}
+.kit__grid{position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:70px;align-items:center}
+.kit__copy h2{margin:0 0 22px;font-size:clamp(34px,4.6vw,58px);line-height:1.2;font-weight:900;letter-spacing:-.03em}
+.kit__copy>p:not(.eyebrow){margin:0 0 40px;color:#c2cdc0;max-width:440px}
+.kit__list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.kit__list li{display:flex;gap:20px;align-items:baseline;padding:15px 0;border-bottom:1px solid var(--line);font-size:14px;color:var(--bone)}
+.kit__list span{font:700 11px/1 var(--font-mono);color:var(--amber);letter-spacing:.1em}
+.kit__stage{position:relative;height:520px;display:grid;place-items:center;perspective:1100px}
+.compass{
+  position:absolute;width:clamp(260px,30vw,380px);aspect-ratio:1;border-radius:50%;
+  transform-style:preserve-3d;will-change:transform;
+  filter:drop-shadow(0 40px 50px rgba(0,0,0,.65));
+}
+.compass__base{position:absolute;inset:0;border-radius:50%;transform:translateZ(-18px);
+  background:linear-gradient(145deg,#3a3226,#141a15 60%,#0b100d);box-shadow:0 0 0 10px #1a211b,0 0 0 11px rgba(229,162,74,.3)}
+.compass__ring{position:absolute;inset:6%;border-radius:50%;transform:translateZ(2px);
+  background:repeating-conic-gradient(from 0deg,rgba(229,162,74,.9) 0deg .6deg,transparent .6deg 6deg);
+  -webkit-mask:radial-gradient(circle,transparent 0 76%,#000 77% 100%);mask:radial-gradient(circle,transparent 0 76%,#000 77% 100%);
+  box-shadow:0 0 0 1px rgba(229,162,74,.25)}
+.compass__ticks{position:absolute;inset:14%;border-radius:50%;transform:translateZ(4px);
+  background:repeating-conic-gradient(from 0deg,rgba(232,230,218,.5) 0deg .45deg,transparent .45deg 30deg);
+  -webkit-mask:radial-gradient(circle,transparent 0 86%,#000 87% 100%);mask:radial-gradient(circle,transparent 0 86%,#000 87% 100%)}
+.compass__face{position:absolute;inset:11%;border-radius:50%;transform:translateZ(12px);
+  background:radial-gradient(circle at 34% 28%,#2b3b30,#101a15 72%);
+  box-shadow:inset 0 0 40px rgba(0,0,0,.8),inset 0 1px 0 rgba(232,230,218,.14),inset 0 0 0 1px rgba(232,230,218,.1)}
+.compass__face::before{content:"";position:absolute;inset:11%;border-radius:50%;z-index:0;
+  border:1px solid rgba(232,230,218,.13);
+  background:repeating-conic-gradient(from 0deg,rgba(232,230,218,.45) 0deg .4deg,transparent .4deg 15deg);
+  -webkit-mask:radial-gradient(circle,transparent 0 91%,#000 92% 100%);mask:radial-gradient(circle,transparent 0 91%,#000 92% 100%)}
+.compass__face::after{content:"";position:absolute;inset:20%;z-index:0;pointer-events:none;
+  background:linear-gradient(90deg,transparent 49.5%,rgba(232,230,218,.11) 49.5% 50.5%,transparent 50.5%),
+             linear-gradient(0deg,transparent 49.5%,rgba(232,230,218,.11) 49.5% 50.5%,transparent 50.5%)}
+.compass__face .dir{position:absolute;font:800 13px/1 var(--font-mono);letter-spacing:.1em;color:var(--muted)}
+.compass__face .dir--n{top:7%;left:50%;transform:translateX(-50%);color:var(--amber)}
+.compass__face .dir--s{bottom:7%;left:50%;transform:translateX(-50%)}
+.compass__face .dir--e{right:8%;top:50%;transform:translateY(-50%)}
+.compass__face .dir--w{left:8%;top:50%;transform:translateY(-50%)}
+.compass__needle{
+  position:absolute;left:50%;top:50%;width:15%;height:60%;z-index:3;transform-origin:50% 50%;
+  transform:translate(-50%,-50%) rotate(0deg);will-change:transform;
+  filter:drop-shadow(0 5px 7px rgba(0,0,0,.65));
+}
+.compass__needle::before,.compass__needle::after{content:"";position:absolute;left:0;width:100%;height:50%}
+.compass__needle::before{top:0;background:linear-gradient(90deg,#c9762f,var(--amber) 50%,#f6c77c);
+  clip-path:polygon(50% 0,100% 100%,0 100%)}
+.compass__needle::after{bottom:0;background:linear-gradient(90deg,rgba(232,230,218,.28),rgba(232,230,218,.72) 50%,rgba(232,230,218,.28));
+  clip-path:polygon(0 0,100% 0,50% 100%)}
+.compass__pin{position:absolute;left:50%;top:50%;width:15px;height:15px;border-radius:50%;z-index:4;
+  transform:translate(-50%,-50%) translateZ(20px);background:var(--bone);box-shadow:0 0 0 4px #1b2820,0 0 16px rgba(229,162,74,.85)}
+.compass__glass{position:absolute;inset:0;border-radius:50%;transform:translateZ(26px);pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.16),transparent 38%,transparent 70%,rgba(255,255,255,.05));
+  box-shadow:inset 0 0 0 1px rgba(232,230,218,.12)}
+.specimen{
+  position:absolute;right:0;bottom:0;width:172px;margin:0;transform:rotate(6deg);
+  transform-style:preserve-3d;will-change:transform;z-index:4;
+  background:var(--bone);padding:8px 8px 0;box-shadow:0 26px 50px -18px rgba(0,0,0,.9);
+}
+.specimen__img{aspect-ratio:2/3;background-image:var(--img-explorer);background-size:cover;background-position:center}
+.specimen figcaption{padding:10px 4px 12px;color:#1b241d;font:800 10px/1.5 var(--font-mono);letter-spacing:.1em}
+.specimen figcaption span{display:block;font:500 9px/1.5 var(--font-sans);letter-spacing:0;color:#5b655c;margin-top:3px}
+
+/* 页脚 */
+.footer{border-top:1px solid var(--line);padding:54px 0 46px;background:var(--ink)}
+.footer__inner{display:flex;flex-wrap:wrap;gap:30px;justify-content:space-between;align-items:center}
+.footer__brand strong{display:block;font:800 15px/1.3 var(--font-mono);letter-spacing:.16em}
+.footer__brand small{font:500 9px/1.6 var(--font-mono);letter-spacing:.22em;color:var(--muted)}
+.footer p{margin:0;max-width:440px;font-size:12px;color:var(--muted);line-height:1.9}
+.footer__stats{display:flex;gap:26px;font:600 11px/1.5 var(--font-mono);letter-spacing:.08em;color:var(--muted)}
+.footer__stats b{display:block;font-size:20px;color:var(--bone);letter-spacing:-.02em}
+
+/* 弹窗 */
+.modal{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px}
+.modal[hidden]{display:none}
+.modal__backdrop{position:absolute;inset:0;background:rgba(5,9,7,.82);backdrop-filter:blur(10px);animation:fade .3s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal__panel{
+  position:relative;width:min(900px,100%);max-height:88vh;overflow-y:auto;background:var(--surface);
+  border:1px solid var(--line-strong);border-radius:20px;box-shadow:var(--shadow);
+  animation:pop .4s var(--ease);
+}
+@keyframes pop{from{opacity:0;transform:translateY(24px) scale(.98)}to{opacity:1;transform:none}}
+.modal__close{position:absolute;top:14px;right:14px;z-index:4;width:36px;height:36px;border-radius:50%;
+  background:rgba(12,19,16,.8);border:1px solid var(--line-strong);font-size:22px;line-height:1;color:var(--bone);transition:all .2s}
+.modal__close:hover{background:var(--amber);color:var(--ink);transform:rotate(90deg)}
+.modal__hero{position:relative;height:200px;background-size:cover;background-position:center;filter:saturate(.8) brightness(.7)}
+.modal__hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent,var(--surface))}
+.modal__glyph{position:absolute;right:8%;bottom:12px;z-index:2;width:110px;height:110px;opacity:.9}
+.modal__glyph svg{width:100%;height:100%}
+.modal__content{padding:0 38px 30px;margin-top:-34px;position:relative;z-index:3}
+.modal__cat{font:700 10px/1 var(--font-mono);letter-spacing:.2em;color:var(--moss);margin:0 0 10px}
+.modal__content h2{margin:0 0 6px;font-size:clamp(26px,4vw,38px);font-weight:900;letter-spacing:-.02em}
+.modal__en{font:500 12px/1.5 var(--font-mono);color:var(--muted-2);margin:0 0 22px}
+.modal__facts{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+.modal__facts span{padding:7px 13px;border:1px solid var(--line);border-radius:999px;font:600 11px/1.4 var(--font-mono);color:var(--muted)}
+.modal__facts b{color:var(--bone);font-weight:700}
+.modal__grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.modal__block h3{margin:0 0 9px;font:700 10px/1.4 var(--font-mono);letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+.modal__block p{margin:0;font-size:13px;line-height:1.85;color:#c8d1c6}
+.modal__warn{background:rgba(217,99,79,.08);border-left:2px solid var(--risk-high);padding:15px 17px;border-radius:0 10px 10px 0}
+.modal__warn h3{color:var(--risk-high)}
+.modal__warn ul{margin:8px 0 0;padding-left:18px;font-size:12px;color:var(--muted);line-height:1.9}
+.modal__quote{grid-column:1/-1;background:var(--surface-2);border-left:2px solid var(--moss);padding:14px 18px;border-radius:0 10px 10px 0}
+.modal__quote p{margin:6px 0 0;font-size:15px;line-height:1.9;color:var(--bone);font-style:italic}
+.modal__react{grid-column:1/-1;border-top:1px solid var(--line);padding-top:14px}
+.modal__react p{margin:6px 0 0;font-size:13px;color:#c8d1c6}
+
+/* 响应式 */
+@media(max-width:1080px){
+  .hero__inner{grid-template-columns:minmax(0,1fr) 220px;gap:30px}
+  .hero__plate{width:210px}
+  .kit__grid{gap:36px}
+  .kit__stage{height:440px}
+}
+@media(max-width:860px){
+  .wrap,.hero__inner,.chapter__inner{width:min(100% - 36px,var(--wrap))}
+  .nav__links{display:none}
+  .hero__inner{grid-template-columns:1fr;padding:130px 0 100px}
+  .hero__plate{display:none}
+  .hero__stats{max-width:100%}
+  .hero h1{font-size:clamp(42px,10vw,66px)}
+  .chapter{min-height:88vh}
+  .kit__grid{grid-template-columns:1fr}
+  .kit__stage{height:400px}
+  .specimen{width:130px;right:2%}
+  .toolbar{flex-direction:column}
+  .toolbar__tools{width:100%}
+  .search{flex:1}
+  .search input{width:100%}
+  .modal__grid{grid-template-columns:1fr;gap:18px}
+  .modal__content{padding:0 22px 28px}
+}
+@media(max-width:520px){
+  .nav{padding:14px 18px}
+  .brand__text small{display:none}
+  .nav__right .btn--sm{display:none}
+  .hero__stats div{padding-right:10px;margin-right:10px}
+  .hero__stats dt{font-size:21px}
+  .lede{font-size:14px}
+  .cards{grid-template-columns:1fr}
+  .chapter h2{font-size:32px}
+  .kit__stage{height:340px}
+  .compass{width:230px}
+  .specimen{width:100px}
+  .footer__inner{flex-direction:column;align-items:flex-start}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+  .reveal{opacity:1;transform:none}
+  .layer,.hero__copy,.ch-scene{transform:none !important}
+}
+</style>
 </head>
 <body>
-    <div id="root"></div>
-    <script type="module">
-        // 定义类型
-        const FoodItem = {
-            id: '',
-            name: '',
-            category: '',
-            calories: 0,
-            riskLevel: '低',
-            riskDescription: '',
-            precautions: [],
-            bearQuote: '',
-            audienceReaction: '',
-            region: '',
-            environment: '',
-            eatingMethod: '',
-            imageUrl: '',
-            description: ''
-        };
+<div class="grain" aria-hidden="true"></div>
+<div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
 
-        // 食物数据
-        const FOOD_DATA = [
-            {
-                id: '1',
-                name: '巨型幼虫 (Giant Larva)',
-                category: '昆虫',
-                calories: 120,
-                riskLevel: '低',
-                riskDescription: '可能有寄生虫。',
-                precautions: ['去除头部', '建议挤出内脏或整只生吞'],
-                bearQuote: '“它们含有丰富的蛋白质，虽然口感像过期的奶油冻，但你需要这股能量。”',
-                audienceReaction: '🤢 “救命，我隔着屏幕都能听到爆浆的声音！”',
-                region: '东南亚',
-                environment: '热带雨林',
-                eatingMethod: '生吃/去头',
-                imageUrl: 'https://picsum.photos/seed/larva/400/300',
-                description: '这种巨大的甲虫幼虫是极佳的蛋白质来源，在腐烂的树干中经常可以找到。'
-            },
-            {
-                id: '2',
-                name: '响尾蛇 (Rattlesnake)',
-                category: '爬行动物',
-                calories: 450,
-                riskLevel: '高',
-                riskDescription: '剧毒蛇类，捕杀风险极大。',
-                precautions: ['斩首并深埋头部', '去除剥皮后彻底烤熟'],
-                bearQuote: '“鸡肉的味道，但更有嚼劲。记住，一定要把头埋得深一点，它的神经反应可能还会咬你一口。”',
-                audienceReaction: '🔥 “这大概是整季最豪华的一顿饭了。”',
-                region: '北美洲',
-                environment: '荒漠/峡谷',
-                eatingMethod: '烤制',
-                imageUrl: 'https://picsum.photos/seed/snake/400/300',
-                description: '沙漠中的顶级猎食者，其肉质坚实，能提供充足的热量。'
-            },
-            {
-                id: '3',
-                name: '象粪水 (Elephant Dung Fluid)',
-                category: '排泄物/液体',
-                calories: 5,
-                riskLevel: '高',
-                riskDescription: '大量细菌和寄生虫。',
-                precautions: ['最后时刻的生存选择', '不要喝固态部分'],
-                bearQuote: '“如果你快渴死了，这绝对能救你的命。它喝起来……就像是陈年沼泽地的味道。”',
-                audienceReaction: '🤮 “我看这段的时候正在吃饭，现在我没法直视我的汤了。”',
-                region: '非洲',
-                environment: '萨瓦纳草原',
-                eatingMethod: '挤出汁液饮用',
-                imageUrl: 'https://picsum.photos/seed/dung/400/300',
-                description: '在极度干旱的非洲荒野，象粪中挤出的液体是绝望中的水分来源。'
-            },
-            {
-                id: '4',
-                name: '牦牛眼珠 (Yak Eyeball)',
-                category: '内脏',
-                calories: 80,
-                riskLevel: '中',
-                riskDescription: '可能有未知的动物传染病。',
-                precautions: ['直接吞服', '注意眼角膜的韧性'],
-                bearQuote: '“像一颗巨大的、黏糊糊的爆珠。里面的液体充满了维生素。”',
-                audienceReaction: '😱 “那个眼神……它在看着你吃它！”',
-                region: '亚洲',
-                environment: '高海拔荒原',
-                eatingMethod: '生吃/爆浆',
-                imageUrl: 'https://picsum.photos/seed/eyeball/400/300',
-                description: '西藏荒原上珍贵的补给。'
-            },
-            {
-                id: '5',
-                name: '蝎子 (Scorpion)',
-                category: '蛛形纲',
-                calories: 40,
-                riskLevel: '中',
-                riskDescription: '尾端带有毒刺。',
-                precautions: ['务必去除毒刺和毒囊', '咬掉头部后进食'],
-                bearQuote: '“如果你把它弄死，咬掉尾巴，它就是荒野中的松脆小零食。”',
-                audienceReaction: '🦂 “嘎嘣脆，鸡肉味？”',
-                region: '北美/非洲',
-                environment: '沙漠',
-                eatingMethod: '生吃/烤制',
-                imageUrl: 'https://picsum.photos/seed/scorpion/400/300',
-                description: '富含蛋白质和矿物质。'
-            },
-            {
-                id: '6',
-                name: '羊睾丸 (Goat Testicle)',
-                category: '内脏',
-                calories: 150,
-                riskLevel: '中',
-                riskDescription: '口感极差，可能导致心理不适。',
-                precautions: ['快速咀嚼', '不要回味'],
-                bearQuote: '“这需要极大的意志力。非常富有韧性，而且有一股……特殊的膻味。”',
-                audienceReaction: '😂 “真男人贝尔，什么都敢挑战。”',
-                region: '中东',
-                environment: '荒漠山地',
-                eatingMethod: '生吃',
-                imageUrl: 'https://picsum.photos/seed/testicle/400/300',
-                description: '在贝都因人的荒野中，这是“慷慨”的赠礼。'
-            },
-            {
-                id: '7',
-                name: '腐烂的驯鹿 (Rotten Reindeer)',
-                category: '肉类',
-                calories: 800,
-                riskLevel: '极高',
-                riskDescription: '严重的细菌感染和肉毒杆菌风险。',
-                precautions: ['避开最腐烂的部分', '尽可能加热'],
-                bearQuote: '“闻起来像地狱，但这是几千大卡的热量。在极地，你不能挑食。”',
-                audienceReaction: '😨 “那种苍蝇乱飞的画面我永生难忘。”',
-                region: '北极',
-                environment: '极寒地带',
-                eatingMethod: '生吃/割取腐肉',
-                imageUrl: 'https://picsum.photos/seed/reindeer/400/300',
-                description: '在冰天雪地中发现的被捕食者剩下的残骸。'
-            },
-            {
-                id: '8',
-                name: '巨型蜈蚣 (Giant Centipede)',
-                category: '多足类',
-                calories: 30,
-                riskLevel: '高',
-                riskDescription: '剧毒且会咬人。',
-                precautions: ['在它咬你之前掐断头部', '去除足部'],
-                bearQuote: '“你需要极快的手速。咬下去的时候，它还在你嘴里动。”',
-                audienceReaction: '💀 “噩梦素材，绝对是噩梦素材。”',
-                region: '东南亚',
-                environment: '热带雨林',
-                eatingMethod: '生吃/去头',
-                imageUrl: 'https://picsum.photos/seed/centipede/400/300',
-                description: '这种节肢动物在潮湿环境中极其危险。'
-            },
-            {
-                id: '9',
-                name: '树皮 (Outer Bark)',
-                category: '植物',
-                calories: 10,
-                riskLevel: '低',
-                riskDescription: '极难消化，可能导致便秘。',
-                precautions: ['只吃韧皮部（内部白色部分）', '细嚼慢咽'],
-                bearQuote: '“这不是为了味道，这是为了纤维。让你的肠胃保持运作。”',
-                audienceReaction: '🪓 “这看着比虫子还难以下咽。”',
-                region: '全球',
-                environment: '森林',
-                eatingMethod: '咀嚼/烹煮',
-                imageUrl: 'https://picsum.photos/seed/bark/400/300',
-                description: '冬季生存时的最后选择。'
-            },
-            {
-                id: '10',
-                name: '蝙蝠 (Bat)',
-                category: '哺乳动物',
-                calories: 200,
-                riskLevel: '极高',
-                riskDescription: '多种病毒（狂犬病、埃博拉等）的天然宿主。',
-                precautions: ['彻底煮熟', '避免接触血液'],
-                bearQuote: '“洞穴里的‘空中小鸡’。一定要用火彻底烤焦。”',
-                audienceReaction: '🦇 “贝尔，三思啊！这个风险太大了！”',
-                region: '亚洲/澳洲',
-                environment: '洞穴',
-                eatingMethod: '烤制',
-                imageUrl: 'https://picsum.photos/seed/bat/400/300',
-                description: '捕捉洞穴中悬挂的蝙蝠。'
-            },
-            {
-                id: '11',
-                name: '斑马肉 (Zebra Carcass)',
-                category: '肉类',
-                calories: 1200,
-                riskLevel: '高',
-                riskDescription: '如果是狮子剩下的，可能带有唾液细菌。',
-                precautions: ['观察周围是否有捕食者', '取肉后立刻撤离'],
-                bearQuote: '“狮子吃剩下的就是我的晚餐。这种野味非常强壮。”',
-                audienceReaction: '🦁 “从狮子口中夺食，不愧是贝爷。”',
-                region: '非洲',
-                environment: '草原',
-                eatingMethod: '生吃/烤制',
-                imageUrl: 'https://picsum.photos/seed/zebra/400/300',
-                description: '在萨瓦纳草原寻找大型猫科动物的残餐。'
-            },
-            {
-                id: '12',
-                name: '巨型蚯蚓 (Giant Earthworm)',
-                category: '环节动物',
-                calories: 50,
-                riskLevel: '低',
-                riskDescription: '满口泥沙，口感糟糕。',
-                precautions: ['挤出中间的泥土', '整根吞下'],
-                bearQuote: '“就像吃一根充满泥巴的面条，但蛋白质含量很高。”',
-                audienceReaction: '🪱 “我宁愿饿着，真的。”',
-                region: '全球',
-                environment: '潮湿森林',
-                eatingMethod: '生吃/挤出泥土',
-                imageUrl: 'https://picsum.photos/seed/worm/400/300',
-                description: '雨后极易获取。'
-            },
-            {
-                id: '13',
-                name: '蜘蛛 (Large Spider)',
-                category: '蛛形纲',
-                calories: 25,
-                riskLevel: '中',
-                riskDescription: '部分有毒，毛刺会刺伤口腔。',
-                precautions: ['咬掉头部', '去除带毛的腿'],
-                bearQuote: '“有点苦，像苦涩的坚果。一定要快点嚼。”',
-                audienceReaction: '🕷️ “蜘蛛侠看了会流泪。”',
-                region: '东南亚',
-                environment: '雨林',
-                eatingMethod: '生吃',
-                imageUrl: 'https://picsum.photos/seed/spider/400/300',
-                description: '富含脂肪和蛋白质。'
-            },
-            {
-                id: '14',
-                name: '驼鹿心脏 (Moose Heart)',
-                category: '内脏',
-                calories: 600,
-                riskLevel: '低',
-                riskDescription: '相对安全，主要是心理压力。',
-                precautions: ['如果是新鲜的，趁热吃'],
-                bearQuote: '“这是对猎物的尊重，也是能量的极致补充。温热的心脏含有盐分。”',
-                audienceReaction: '❤️ “非常有冲击力的画面，充满了野性。”',
-                region: '北美',
-                environment: '针叶林',
-                eatingMethod: '生吃',
-                imageUrl: 'https://picsum.photos/seed/heart/400/300',
-                description: '极其高效的蛋白质和矿物质补给。'
-            },
-            {
-                id: '15',
-                name: '蜣螂 (Dung Beetle)',
-                category: '昆虫',
-                calories: 15,
-                riskLevel: '中',
-                riskDescription: '携带粪便细菌。',
-                precautions: ['剥掉坚硬的外壳', '只吃中间的肌肉部分'],
-                bearQuote: '“你需要忽略它的背景，专注于那一点点蛋白质。”',
-                audienceReaction: '💩 “屎壳郎也能吃？贝尔你赢了。”',
-                region: '非洲',
-                environment: '草原',
-                eatingMethod: '生吃/剥壳',
-                imageUrl: 'https://picsum.photos/seed/beetle/400/300',
-                description: '在粪堆旁活跃的勤劳昆虫。'
-            },
-            {
-                id: '16',
-                name: '蝉 (Cicada)',
-                category: '昆虫',
-                calories: 10,
-                riskLevel: '低',
-                riskDescription: '外壳坚硬，口感一般。',
-                precautions: ['去掉翅膀'],
-                bearQuote: '“它们就像长了翅膀的小香肠。”',
-                audienceReaction: '🦗 “这个我也吃过，油炸很好吃。”',
-                region: '亚洲/北美',
-                environment: '森林',
-                eatingMethod: '生吃/烤制',
-                imageUrl: 'https://picsum.photos/seed/cicada/400/300',
-                description: '夏季常见的林间补给。'
-            },
-            {
-                id: '17',
-                name: '蚂蚁 (Ants)',
-                category: '昆虫',
-                calories: 5,
-                riskLevel: '低',
-                riskDescription: '酸性较强（蚁酸）。',
-                precautions: ['最好一次抓一大把吃'],
-                bearQuote: '“它们吃起来像柠檬，酸酸的，能刺激唾液分泌。”',
-                audienceReaction: '🐜 “贝尔的随身柠檬片。”',
-                region: '全球',
-                environment: '各异',
-                eatingMethod: '生吃',
-                imageUrl: 'https://picsum.photos/seed/ants/400/300',
-                description: '微型能量炸弹。'
-            },
-            {
-                id: '18',
-                name: '豪猪 (Porcupine)',
-                category: '哺乳动物',
-                calories: 500,
-                riskLevel: '中',
-                riskDescription: '背后的尖刺极具威胁。',
-                precautions: ['用粗木棍敲打头部', '小心处理刺毛'],
-                bearQuote: '“如果你能搞定那些刺，它的肉真的很香。”',
-                audienceReaction: '🦔 “看着都疼，贝尔是怎么抓住它的？”',
-                region: '非洲/亚洲',
-                environment: '林地/灌木',
-                eatingMethod: '烤制',
-                imageUrl: 'https://picsum.photos/seed/porcupine/400/300',
-                description: '防御力极强但行动相对缓慢的猎物。'
-            },
-            {
-                id: '19',
-                name: '蜥蜴 (Lizard)',
-                category: '爬行动物',
-                calories: 100,
-                riskLevel: '中',
-                riskDescription: '可能有寄生虫和沙门氏菌。',
-                precautions: ['剥掉皮', '彻底煮熟'],
-                bearQuote: '“荒野里的快餐。口感像有点老的鱼。”',
-                audienceReaction: '🦎 “可怜的小蜥蜴，变成了贝爷的加餐。”',
-                region: '全球',
-                environment: '干燥地区',
-                eatingMethod: '烤制',
-                imageUrl: 'https://picsum.photos/seed/lizard/400/300',
-                description: '极易在石头缝中发现。'
-            },
-            {
-                id: '20',
-                name: '生鱼 (Raw Fish)',
-                category: '鱼类',
-                calories: 300,
-                riskLevel: '中',
-                riskDescription: '淡水鱼易有寄生虫。',
-                precautions: ['如果是淡水鱼尽量煮熟', '避开内脏'],
-                bearQuote: '“在大自然中，寿司就是这么新鲜。一定要咬住背部防止它滑走。”',
-                audienceReaction: '🐟 “这吃相，真的像一头熊。”',
-                region: '全球',
-                environment: '河流/海洋',
-                eatingMethod: '生吃/咬碎',
-                imageUrl: 'https://picsum.photos/seed/fish/400/300',
-                description: '水中最直接的蛋白质来源。'
-            },
-            {
-                id: '21',
-                name: '蜂蛹 (Bee Larvae)',
-                category: '昆虫',
-                calories: 180,
-                riskLevel: '高',
-                riskDescription: '获取时极易被成蜂蜇伤。',
-                precautions: ['用烟熏走成蜂', '保护面部'],
-                bearQuote: '“这是荒野里的糖果。高脂肪、高热量，口感丝滑。”',
-                audienceReaction: '🐝 “冒着被蜇成猪头的风险去吃糖果，值得吗？”',
-                region: '全球',
-                environment: '森林',
-                eatingMethod: '生吃/整窝吞',
-                imageUrl: 'https://picsum.photos/seed/bee/400/300',
-                description: '由于含有蜂蜜，是罕见的甜味补给。'
-            },
-            {
-                id: '22',
-                name: '蚱蜢 (Grasshopper)',
-                category: '昆虫',
-                calories: 15,
-                riskLevel: '低',
-                riskDescription: '后腿带刺，可能划伤喉咙。',
-                precautions: ['掐掉头部和后腿'],
-                bearQuote: '“掐掉头，拽出内脏，它们就是高蛋白的小吃。”',
-                audienceReaction: '🦗 “贝尔吃这些就像我们在吃薯片。”',
-                region: '全球',
-                environment: '草地',
-                eatingMethod: '生吃/烤制',
-                imageUrl: 'https://picsum.photos/seed/grasshopper/400/300',
-                description: '随处可见，极其便携。'
-            },
-            {
-                id: '23',
-                name: '蜗牛 (Snail)',
-                category: '软体动物',
-                calories: 20,
-                riskLevel: '中',
-                riskDescription: '可能携带导致脑炎的寄生虫。',
-                precautions: ['务必煮熟', '清理粘液'],
-                bearQuote: '“法式料理的野外版。粘液有点恶心，但肉质还行。”',
-                audienceReaction: '🐌 “这不是法式蜗牛，这是求生蜗牛。”',
-                region: '全球',
-                environment: '阴湿地带',
-                eatingMethod: '烤制/煮食',
-                imageUrl: 'https://picsum.photos/seed/snail/400/300',
-                description: '富含矿物质，获取难度极低。'
-            },
-            {
-                id: '24',
-                name: '海胆 (Sea Urchin)',
-                category: '海鲜',
-                calories: 120,
-                riskLevel: '中',
-                riskDescription: '刺有毒或极易扎伤手。',
-                precautions: ['用石头敲开', '只吃黄色的生殖腺'],
-                bearQuote: '“大海的精华。它的生殖腺充满了奶油感和海洋的味道。”',
-                audienceReaction: '🌊 “贝尔在海边生活得还挺精致。”',
-                region: '海岸线',
-                environment: '海洋',
-                eatingMethod: '生吃',
-                imageUrl: 'https://picsum.photos/seed/urchin/400/300',
-                description: '礁石缝隙里的美食。'
-            },
-            {
-                id: '25',
-                name: '椰子蟹 (Coconut Crab)',
-                category: '甲壳类',
-                calories: 800,
-                riskLevel: '高',
-                riskDescription: '巨大的螯能夹断手指。',
-                precautions: ['控制住它的大螯', '尾部可能有毒（如果它吃了有毒果实）'],
-                bearQuote: '“它是求生者的梦想午餐。肉量充足，味道鲜美。”',
-                audienceReaction: '🦀️ “这种螃蟹很贵的吧？贝尔真会吃。”',
-                region: '热带海岛',
-                environment: '雨林/海岸',
-                eatingMethod: '烤制',
-                imageUrl: 'https://picsum.photos/seed/crab/400/300',
-                description: '陆地上最大的节肢动物。'
-            },
-            {
-                id: '26',
-                name: '巨蜥 (Monitor Lizard)',
-                category: '爬行动物',
-                calories: 1500,
-                riskLevel: '极高',
-                riskDescription: '唾液中含有致命细菌。',
-                precautions: ['避免被咬到', '剥皮后彻底煮沸'],
-                bearQuote: '“这是一场生存硬仗。只要杀掉它，你能吃三天。”',
-                audienceReaction: '🐉 “这简直是怪兽对决。”',
-                region: '亚洲/澳洲/非洲',
-                environment: '多样',
-                eatingMethod: '烤制',
-                imageUrl: 'https://picsum.photos/seed/monitor/400/300',
-                description: '凶猛的大型蜥蜴。'
-            },
-            {
-                id: '27',
-                name: '鳄鱼肉 (Crocodile Meat)',
-                category: '爬行动物',
-                calories: 2000,
-                riskLevel: '极高',
-                riskDescription: '水中顶级掠食者，极难捕杀。',
-                precautions: ['通常寻找幼体或剩下的残肢', '尾部肉质最佳'],
-                bearQuote: '“有点像鱼和鸡肉的混合体。非常紧实的肌肉。”',
-                audienceReaction: '🐊 “贝尔，你才是食物链顶端的男人。”',
-                region: '澳洲/非洲/东南亚',
-                environment: '沼泽/河流',
-                eatingMethod: '烤制',
-                imageUrl: 'https://picsum.photos/seed/crocodile/400/300',
-                description: '能量极高的肉类。'
-            },
-            {
-                id: '28',
-                name: '蟾蜍 (Toad)',
-                category: '两栖类',
-                calories: 40,
-                riskLevel: '极高',
-                riskDescription: '皮肤上的腺体分泌剧毒。',
-                precautions: ['绝对不能带皮吃', '彻底清理内脏'],
-                bearQuote: '“除非真的要饿死了，否则我不建议尝试。必须非常小心地剥皮。”',
-                audienceReaction: '🐸 “这个风险太高了，真的不建议模范。”',
-                region: '全球',
-                environment: '湿地',
-                eatingMethod: '剥皮烤制',
-                imageUrl: 'https://picsum.photos/seed/toad/400/300',
-                description: '求生中的高风险补给。'
-            },
-            {
-                id: '29',
-                name: '螃蟹 (Wild Crab)',
-                category: '甲壳类',
-                calories: 150,
-                riskLevel: '中',
-                riskDescription: '携带肺吸虫。',
-                precautions: ['必须烤熟', '小心夹伤'],
-                bearQuote: '“荒野里的淡水宝藏。嚼碎它的壳，吸取里面的肉。”',
-                audienceReaction: '🦀 “普通的美味。”',
-                region: '全球',
-                environment: '溪流/海岸',
-                eatingMethod: '烤制',
-                imageUrl: 'https://picsum.photos/seed/wildcrab/400/300',
-                description: '求生场景中常见的蛋白质。'
-            },
-            {
-                id: '30',
-                name: '大型甲虫 (Large Beetle)',
-                category: '昆虫',
-                calories: 20,
-                riskLevel: '中',
-                riskDescription: '外壳可能划伤肠道。',
-                precautions: ['烤焦后剥去硬壳'],
-                bearQuote: '“如果它的甲壳太硬，就只吃腹部的软组织。”',
-                audienceReaction: '🪲 “那种‘啪’的一声，我心脏都跳了一下。”',
-                region: '全球',
-                environment: '森林',
-                eatingMethod: '生吃/剥壳',
-                imageUrl: 'https://picsum.photos/seed/beetle2/400/300',
-                description: '富含甲壳素。'
-            }
-        ];
+<header class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="回到顶部">
+    <span class="brand__mark">B</span>
+    <span class="brand__text"><strong>BEAR GRYLLS</strong><small>SURVIVAL FOOD ARCHIVE</small></span>
+  </a>
+  <nav class="nav__links" aria-label="页面导航">
+    <a href="#journey">路线</a>
+    <a href="#archive">图鉴</a>
+    <a href="#kit">装备</a>
+  </nav>
+  <div class="nav__right">
+    <button type="button" class="btn btn--ghost btn--sm" id="navSearch">搜索图鉴</button>
+    <a href="#archive" class="btn btn--primary btn--sm">翻开图鉴</a>
+  </div>
+</header>
 
-        // 食物卡片组件
-        function FoodCard({ item, onClick }) {
-            const riskColors = {
-                '低': 'bg-green-600/20 text-green-400 border-green-600/30',
-                '中': 'bg-yellow-600/20 text-yellow-400 border-yellow-600/30',
-                '高': 'bg-orange-600/20 text-orange-400 border-orange-600/30',
-                '极高': 'bg-red-600/20 text-red-400 border-red-600/30'
-            };
+<main>
+  <!-- ============ HERO ============ -->
+  <section class="hero" id="top">
+    <div class="hero__stage" id="heroStage" aria-hidden="true">
+      <div class="layer layer--sky"></div>
+      <div class="layer layer--far" data-depth="0.08"></div>
+      <div class="layer layer--main" data-depth="0.20"></div>
+      <div class="layer layer--ridge" data-depth="0.42">
+        <svg viewBox="0 0 1440 320" preserveAspectRatio="none">
+          <path d="M0,190 L90,168 L170,196 L260,150 L340,182 L430,132 L520,176 L610,142 L700,186 L800,158 L890,192 L980,148 L1070,184 L1160,152 L1250,190 L1340,164 L1440,200 L1440,320 L0,320 Z" fill="#0a110d" opacity=".72"/>
+          <path d="M0,238 L120,214 L230,246 L350,210 L470,244 L590,216 L710,248 L830,212 L950,242 L1070,214 L1190,246 L1310,218 L1440,244 L1440,320 L0,320 Z" fill="#080e0b" opacity=".9"/>
+        </svg>
+      </div>
+      <div class="layer layer--fog" data-depth="0.30"></div>
+      <div class="layer layer--grass" data-depth="0.72">
+        <svg viewBox="0 0 1440 320" preserveAspectRatio="none">
+          <g fill="#070c09">
+            <path d="M0,320 L0,140 L24,168 L12,168 L38,196 L26,196 L54,228 L40,228 L72,262 L0,262 Z"/>
+            <path d="M1440,320 L1440,120 L1414,152 L1426,152 L1398,186 L1412,186 L1382,222 L1396,222 L1364,262 L1440,262 Z"/>
+            <path d="M0,320 L0,262 L60,250 L120,268 L190,246 L260,270 L330,252 L400,272 L470,250 L540,270 L610,252 L680,272 L750,250 L820,270 L890,252 L960,272 L1030,250 L1100,270 L1170,252 L1240,272 L1310,250 L1380,270 L1440,254 L1440,320 Z"/>
+          </g>
+        </svg>
+      </div>
+      <div class="hero__vignette"></div>
+    </div>
 
-            return `
-                <div 
-                    class="group bg-gray-800/40 rounded-2xl overflow-hidden border border-gray-700/50 hover:border-green-500/50 hover:bg-gray-800/60 transition-all cursor-pointer hover:-translate-y-1 shadow-lg"
-                    onclick="selectFood('${item.id}')"
-                >
-                    <div class="relative h-48 overflow-hidden">
-                        <img 
-                            src="${item.imageUrl}" 
-                            alt="${item.name}" 
-                            class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                        />
-                        <div class="absolute top-3 left-3">
-                            <span class="px-2 py-1 rounded-full text-xs font-bold backdrop-blur-md border ${riskColors[item.riskLevel]}">
-                                ${item.riskLevel}风险
-                            </span>
-                        </div>
-                    </div>
-                    <div class="p-4">
-                        <h3 class="text-lg font-bold text-white mb-2">${item.name}</h3>
-                        <p class="text-sm text-gray-400 mb-3 line-clamp-2">${item.description}</p>
-                        <div class="flex justify-between items-center text-xs text-gray-500">
-                            <span>${item.calories}卡</span>
-                            <span>${item.region}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
+    <div class="hero__inner">
+      <div class="hero__copy" id="heroCopy">
+        <p class="eyebrow"><span class="dot"></span> FIELD NOTES · 001—030</p>
+        <h1>站在食物链<br><span>顶端的菜单</span></h1>
+        <p class="lede">贝爷在荒野里吃过什么，这里全记着。<br>30 份补给，按风险、热量和地域归档。</p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href="#archive">翻图鉴 <span aria-hidden="true">↓</span></a>
+          <button class="btn btn--ghost" id="randomBtn" type="button">随便来一份</button>
+        </div>
+        <dl class="hero__stats" id="heroStats"></dl>
+      </div>
+      <div class="hero__plate" id="heroPlate" aria-hidden="true">
+        <div class="plate__img"></div>
+        <div class="plate__label">SPECIMEN 001 / EXPLORER</div>
+      </div>
+    </div>
+    <div class="hero__hint" aria-hidden="true">SCROLL <span></span></div>
+  </section>
 
-        // 食物详情模态框
-        function FoodModal({ item, onClose }) {
-            if (!item) return '';
-            
-            const riskColors = {
-                '低': 'bg-green-600/20 text-green-400 border-green-600/30',
-                '中': 'bg-yellow-600/20 text-yellow-400 border-yellow-600/30',
-                '高': 'bg-orange-600/20 text-orange-400 border-orange-600/30',
-                '极高': 'bg-red-600/20 text-red-400 border-red-600/30'
-            };
+  <!-- ============ 分镜 ============ -->
+  <section class="chapters" id="journey">
+    <div class="chapters__bg" id="chapterBg" aria-hidden="true">
+      <div class="ch-scene is-active" data-scene="jungle"></div>
+      <div class="ch-scene" data-scene="desert"></div>
+      <div class="ch-scene" data-scene="snow"></div>
+      <div class="ch-scene" data-scene="coast"></div>
+      <div class="chapters__shade"></div>
+    </div>
+    <div class="chapters__inner">
+      <article class="chapter" data-scene="jungle">
+        <div class="chapter__inner reveal">
+          <p class="chapter__tag">01 / 热带雨林</p>
+          <h2>树皮一掀，<br>底下全是蛋白质。</h2>
+          <p>巨型幼虫生吞，去头。贝爷说口感像过期的奶油冻，但你需要这股能量。雨林里挑食的人走不远。</p>
+          <span class="chapter__meta">东南亚 · 腐木 · 生吃</span>
+        </div>
+      </article>
+      <article class="chapter" data-scene="desert">
+        <div class="chapter__inner reveal">
+          <p class="chapter__tag">02 / 荒漠峡谷</p>
+          <h2>水比食物要命。<br>蛇头要埋深一点。</h2>
+          <p>响尾蛇烤熟了是 450 大卡。斩下的头还得深埋，神经反射能让它再咬一口。象粪里挤出的水，是最后一步。</p>
+          <span class="chapter__meta">北美洲 / 非洲 · 450 kcal · 烤制</span>
+        </div>
+      </article>
+      <article class="chapter" data-scene="snow">
+        <div class="chapter__inner reveal">
+          <p class="chapter__tag">03 / 极寒地带</p>
+          <h2>零下三十度，<br>热量就是命。</h2>
+          <p>几千大卡、闻起来像地狱的东西也得咽下去。在极地不能挑食，体温掉下去比饿肚子快得多。</p>
+          <span class="chapter__meta">北极 · 高热量 · 不挑食</span>
+        </div>
+      </article>
+      <article class="chapter" data-scene="coast">
+        <div class="chapter__inner reveal">
+          <p class="chapter__tag">04 / 溪流海岸</p>
+          <h2>退潮之后，<br>石头缝里全是补给。</h2>
+          <p>螃蟹、贝类、海藻。捡得到，但一律烤熟 —— 淡水蟹带肺吸虫，生吃的代价不在这一顿。</p>
+          <span class="chapter__meta">全球海岸线 · 甲壳类 · 必须烤熟</span>
+        </div>
+      </article>
+    </div>
+  </section>
 
-            return `
-                <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                    <div class="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl">
-                        <div class="relative h-64">
-                            <img src="${item.imageUrl}" alt="${item.name}" class="w-full h-full object-cover" />
-                            <button onclick="closeModal()" class="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white transition-colors">
-                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                            <div class="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-gray-800 to-transparent">
-                                <div class="flex items-center gap-3">
-                                    <h2 class="text-2xl font-bold text-white">${item.name}</h2>
-                                    <span class="px-3 py-1 rounded-full text-xs font-bold uppercase ${riskColors[item.riskLevel]}">
-                                        ${item.riskLevel}风险
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="p-6">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <h3 class="text-lg font-bold text-white mb-3">基本信息</h3>
-                                    <div class="space-y-3">
-                                        <div>
-                                            <p class="text-sm text-gray-400">类别</p>
-                                            <p class="text-white">${item.category}</p>
-                                        </div>
-                                        <div>
-                                            <p class="text-sm text-gray-400">热量</p>
-                                            <p class="text-white">${item.calories} 卡路里</p>
-                                        </div>
-                                        <div>
-                                            <p class="text-sm text-gray-400">地区</p>
-                                            <p class="text-white">${item.region}</p>
-                                        </div>
-                                        <div>
-                                            <p class="text-sm text-gray-400">环境</p>
-                                            <p class="text-white">${item.environment}</p>
-                                        </div>
-                                        <div>
-                                            <p class="text-sm text-gray-400">处理方式</p>
-                                            <p class="text-white">${item.eatingMethod}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <h3 class="text-lg font-bold text-white mb-3">风险信息</h3>
-                                    <div class="space-y-3">
-                                        <div>
-                                            <p class="text-sm text-gray-400">风险描述</p>
-                                            <p class="text-white">${item.riskDescription}</p>
-                                        </div>
-                                        <div>
-                                            <p class="text-sm text-gray-400">注意事项</p>
-                                            <ul class="text-white list-disc pl-5 space-y-1">
-                                                ${item.precautions.map(p => `<li>${p}</li>`).join('')}
-                                            </ul>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="mt-6 pt-6 border-t border-gray-700">
-                                <h3 class="text-lg font-bold text-white mb-3">描述</h3>
-                                <p class="text-gray-300">${item.description}</p>
-                            </div>
-                            
-                            <div class="mt-6 pt-6 border-t border-gray-700">
-                                <h3 class="text-lg font-bold text-white mb-3">贝爷语录</h3>
-                                <p class="text-gray-300 italic">"${item.bearQuote}"</p>
-                            </div>
-                            
-                            <div class="mt-6 pt-6 border-t border-gray-700">
-                                <h3 class="text-lg font-bold text-white mb-3">观众反应</h3>
-                                <p class="text-gray-300">${item.audienceReaction}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
+  <!-- ============ 图鉴 ============ -->
+  <section class="archive" id="archive">
+    <div class="wrap">
+      <header class="section-head reveal">
+        <p class="eyebrow"><span class="dot"></span> THE ARCHIVE / 030 ITEMS</p>
+        <h2>荒野图鉴</h2>
+        <p>按类别筛，或者直接搜名字。点开卡片看贝爷原话和风险提示。</p>
+      </header>
+      <div class="toolbar reveal">
+        <div class="chips" id="chips"></div>
+        <div class="toolbar__tools">
+          <label class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
+            <input id="search" type="search" placeholder="搜食物 / 地域 / 描述" aria-label="搜索图鉴">
+          </label>
+          <div class="switch" id="viewSwitch" role="group" aria-label="切换视图">
+            <button type="button" data-view="grid" class="is-active">图鉴</button>
+            <button type="button" data-view="graph">关系图</button>
+          </div>
+        </div>
+      </div>
+      <div class="cards" id="cards"></div>
+      <div class="graph" id="graph" hidden></div>
+      <p class="empty" id="empty" hidden>没找到相关的补给。<button type="button" id="resetBtn">清空条件</button></p>
+    </div>
+  </section>
 
-        // 知识图谱组件
-        function KnowledgeGraph() {
-            const width = 800;
-            const height = 600;
+  <!-- ============ 3D 装备 ============ -->
+  <section class="kit" id="kit">
+    <div class="wrap kit__grid">
+      <div class="kit__copy reveal">
+        <p class="eyebrow"><span class="dot"></span> FIELD KIT / 3D</p>
+        <h2>荒野里，<br>方向比胆子重要。</h2>
+        <p>罗盘、刀、背包。三样东西，撑起一整季的节目。转动鼠标看看，指针会跟着你走。</p>
+        <ul class="kit__list">
+          <li><span>01</span> 先找水，再找吃的</li>
+          <li><span>02</span> 不认识的东西，别放进嘴里</li>
+          <li><span>03</span> 能烤熟，就别生吃</li>
+        </ul>
+      </div>
+      <div class="kit__stage" id="kitStage">
+        <div class="compass" id="compass" aria-label="随指针转动的求生罗盘">
+          <div class="compass__base"></div>
+          <div class="compass__ring"></div>
+          <div class="compass__ticks"></div>
+          <div class="compass__face">
+            <span class="dir dir--n">N</span><span class="dir dir--s">S</span>
+            <span class="dir dir--e">E</span><span class="dir dir--w">W</span>
+            <div class="compass__needle" id="needle"></div>
+            <div class="compass__pin"></div>
+          </div>
+          <div class="compass__glass"></div>
+        </div>
+        <figure class="specimen" id="specimen">
+          <div class="specimen__img" role="img" aria-label="荒野探索者插画：绿色头巾、背包与求生刀"></div>
+          <figcaption>SPECIMEN 001<span>荒野探索者 · 装备记录</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+</main>
 
-            // 创建节点和链接数据
-            const nodes = [];
-            const links = [];
+<footer class="footer">
+  <div class="wrap footer__inner">
+    <div class="footer__brand"><strong>BEAR GRYLLS</strong><small>SURVIVAL FOOD ARCHIVE</small></div>
+    <p>内容整理自《荒野求生》节目里的补给片段，只做可视化展示。别照着吃，真出事得找医生。</p>
+    <div class="footer__stats" id="footerStats"></div>
+  </div>
+</footer>
 
-            // 添加食物节点
-            FOOD_DATA.forEach(food => {
-                nodes.push({ id: food.id, group: 'food', label: food.name, x: Math.random() * width, y: Math.random() * height });
-                
-                // 添加地域节点
-                if (!nodes.some(n => n.id === `region-${food.region}`)) {
-                    nodes.push({ id: `region-${food.region}`, group: 'region', label: food.region });
-                }
-                links.push({ source: food.id, target: `region-${food.region}`, type: 'found_in' });
-                
-                // 添加环境节点
-                if (!nodes.some(n => n.id === `env-${food.environment}`)) {
-                    nodes.push({ id: `env-${food.environment}`, group: 'environment', label: food.environment });
-                }
-                links.push({ source: food.id, target: `env-${food.environment}`, type: 'survives_in' });
-                
-                // 添加处理方式节点
-                if (!nodes.some(n => n.id === `method-${food.eatingMethod}`)) {
-                    nodes.push({ id: `method-${food.eatingMethod}`, group: 'method', label: food.eatingMethod });
-                }
-                links.push({ source: food.id, target: `method-${food.eatingMethod}`, type: 'processed_by' });
-            });
+<div class="modal" id="modal" hidden>
+  <div class="modal__backdrop" data-close></div>
+  <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <button class="modal__close" type="button" data-close aria-label="关闭">×</button>
+    <div class="modal__body" id="modalBody"></div>
+  </div>
+</div>
 
-            // 创建SVG
-            const svg = d3.create("svg")
-                .attr("viewBox", [0, 0, width, height])
-                .attr("width", "100%")
-                .attr("height", "100%")
-                .style("background", "#1a202c");
-
-            // 创建力导向图
-            const simulation = d3.forceSimulation(nodes)
-                .force("link", d3.forceLink(links).id(d => d.id).distance(100))
-                .force("charge", d3.forceManyBody().strength(-300))
-                .force("center", d3.forceCenter(width / 2, height / 2))
-                .force("collision", d3.forceCollide().radius(30));
-
-            // 添加链接
-            const link = svg.append("g")
-                .attr("stroke", "#64748b")
-                .attr("stroke-width", 1.5)
-                .selectAll("line")
-                .data(links)
-                .join("line");
-
-            // 添加节点
-            const node = svg.append("g")
-                .attr("stroke", "#fff")
-                .attr("stroke-width", 1.5)
-                .selectAll("circle")
-                .data(nodes)
-                .join("circle")
-                .attr("r", d => d.group === 'food' ? 8 : 6)
-                .attr("fill", d => {
-                    if (d.group === 'food') return "#10b981"; // 绿色 - 食物
-                    if (d.group === 'region') return "#f59e0b"; // 黄色 - 地域
-                    if (d.group === 'environment') return "#3b82f6"; // 蓝色 - 环境
-                    if (d.group === 'method') return "#ec4899"; // 粉色 - 方法
-                    return "#94a3b8"; // 灰色 - 其他
-                })
-                .call(drag(simulation));
-
-            // 添加标签
-            const label = svg.append("g")
-                .attr("class", "labels")
-                .selectAll("text")
-                .data(nodes)
-                .join("text")
-                .text(d => d.label)
-                .attr("font-size", 10)
-                .attr("dx", 12)
-                .attr("dy", 4)
-                .attr("fill", "#e2e8f0");
-
-            // 更新位置
-            simulation.on("tick", () => {
-                link
-                    .attr("x1", d => d.source.x)
-                    .attr("y1", d => d.source.y)
-                    .attr("x2", d => d.target.x)
-                    .attr("y2", d => d.target.y);
-
-                node
-                    .attr("cx", d => d.x)
-                    .attr("cy", d => d.y);
-
-                label
-                    .attr("x", d => d.x)
-                    .attr("y", d => d.y);
-            });
-
-            // 拖拽功能
-            function drag(simulation) {
-                function dragstarted(event, d) {
-                    if (!event.active) simulation.alphaTarget(0.3).restart();
-                    d.fx = d.x;
-                    d.fy = d.y;
-                }
-                
-                function dragged(event, d) {
-                    d.fx = event.x;
-                    d.fy = event.y;
-                }
-                
-                function dragended(event, d) {
-                    if (!event.active) simulation.alphaTarget(0);
-                    d.fx = null;
-                    d.fy = null;
-                }
-                
-                return d3.drag()
-                    .on("start", dragstarted)
-                    .on("drag", dragged)
-                    .on("end", dragended);
-            }
-
-            // 添加图例
-            const legend = svg.append("g")
-                .attr("class", "legend")
-                .attr("transform", "translate(20,20)");
-
-            const legendItems = [
-                { color: "#10b981", label: "食物" },
-                { color: "#f59e0b", label: "地域" },
-                { color: "#3b82f6", label: "环境" },
-                { color: "#ec4899", label: "处理方式" }
-            ];
-
-            legendItems.forEach((item, i) => {
-                const g = legend.append("g")
-                    .attr("transform", `translate(0,${i * 20})`);
-
-                g.append("circle")
-                    .attr("r", 6)
-                    .attr("cx", 0)
-                    .attr("cy", 0)
-                    .attr("fill", item.color);
-
-                g.append("text")
-                    .attr("x", 12)
-                    .attr("y", 4)
-                    .attr("fill", "#e2e8f0")
-                    .text(item.label);
-            });
-
-            return svg.node();
-        }
-
-        // 主应用组件
-        function App() {
-            // 状态管理
-            let state = {
-                searchTerm: '',
-                selectedCategory: '全部',
-                selectedFood: null,
-                viewMode: 'grid'
-            };
-
-            // 获取过滤后的食物
-            function getFilteredFood() {
-                return FOOD_DATA.filter(food => {
-                    const matchesSearch = food.name.toLowerCase().includes(state.searchTerm.toLowerCase()) || 
-                                        food.description.toLowerCase().includes(state.searchTerm.toLowerCase());
-                    const matchesCategory = state.selectedCategory === '全部' || food.category === state.selectedCategory;
-                    return matchesSearch && matchesCategory;
-                });
-            }
-
-            // 获取所有类别
-            function getCategories() {
-                const categories = Array.from(new Set(FOOD_DATA.map(f => f.category)));
-                return ['全部', ...categories];
-            }
-
-            // 更新应用
-            function updateApp() {
-                const filteredFood = getFilteredFood();
-                const categories = getCategories();
-
-                document.getElementById('root').innerHTML = `
-                    <div class="min-h-screen pb-12">
-                        <!-- Header -->
-                        <header class="sticky top-0 z-40 bg-black/80 backdrop-blur-md border-b border-gray-800">
-                            <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center font-bold text-xl shadow-lg shadow-green-900/50">B</div>
-                                    <div>
-                                        <h1 class="text-xl font-bold wild-font tracking-wider text-green-500">BEAR GRYLLS</h1>
-                                        <p class="text-[10px] text-gray-400 uppercase tracking-[0.2em]">Survival Food Archives</p>
-                                    </div>
-                                </div>
-
-                                <div class="flex items-center gap-2 bg-gray-900 border border-gray-700 rounded-full px-4 py-1">
-                                    <button 
-                                        onclick="updateState({viewMode: 'grid'})"
-                                        class="px-3 py-1 rounded-full text-sm transition-all ${state.viewMode === 'grid' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white'}"
-                                    >
-                                        列表
-                                    </button>
-                                    <button 
-                                        onclick="updateState({viewMode: 'graph'})"
-                                        class="px-3 py-1 rounded-full text-sm transition-all ${state.viewMode === 'graph' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white'}"
-                                    >
-                                        图谱
-                                    </button>
-                                </div>
-
-                                <div class="relative w-full md:w-64">
-                                    <input 
-                                        type="text" 
-                                        placeholder="搜索食物、地域、描述..."
-                                        class="w-full bg-gray-800 border border-gray-700 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-green-500 transition-colors"
-                                        value="${state.searchTerm}"
-                                        oninput="updateState({searchTerm: this.value})"
-                                    />
-                                    <svg class="absolute right-3 top-2.5 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </header>
-
-                        <main class="container mx-auto px-4 py-8">
-                            <!-- Banner -->
-                            <div class="relative h-64 md:h-80 rounded-3xl overflow-hidden mb-12 shadow-2xl">
-                                <img 
-                                    src="https://picsum.photos/seed/bear/1200/400" 
-                                    class="w-full h-full object-cover brightness-50"
-                                    alt="Survivalist Background"
-                                />
-                                <div class="absolute inset-0 flex flex-col justify-center items-center text-center p-6">
-                                    <h2 class="text-4xl md:text-6xl font-black mb-4 wild-font text-white uppercase drop-shadow-lg">
-                                        站在食物链顶端的菜单
-                                    </h2>
-                                    <p class="max-w-2xl text-gray-200 text-sm md:text-base">
-                                        “在大自然中，你不需要米其林三星，你只需要活下去的燃料。” —— 这里收录了贝尔·格里尔斯在荒野求生中遭遇的各种极限补给。
-                                    </p>
-                                </div>
-                            </div>
-
-                            ${state.viewMode === 'grid' ? `
-                                <!-- Filters -->
-                                <div class="flex flex-wrap gap-2 mb-8">
-                                    ${categories.map(cat => `
-                                        <button
-                                            onclick="updateState({selectedCategory: '${cat}'})"
-                                            class="px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                                                state.selectedCategory === cat 
-                                                    ? 'bg-green-600 text-white shadow-lg shadow-green-900/50' 
-                                                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
-                                            }"
-                                        >
-                                            ${cat}
-                                        </button>
-                                    `).join('')}
-                                </div>
-
-                                <!-- Food Grid -->
-                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                    ${filteredFood.map(food => FoodCard({ item: food, onClick: (f) => selectFood(f) })).join('')}
-                                </div>
-                                ${filteredFood.length === 0 ? `
-                                    <div class="text-center py-20 text-gray-500">
-                                        <p class="text-xl">没有找到相关的荒野食物。</p>
-                                        <button onclick="resetFilters()" class="mt-4 text-green-500 hover:underline">重置过滤器</button>
-                                    </div>
-                                ` : ''}
-                            ` : `
-                                <div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <div id="graph-container" style="height: 600px; background: #1a202c; border-radius: 1rem; overflow: hidden; border: 1px solid #374151;"></div>
-                                    <div class="mt-8 bg-gray-800/30 p-6 rounded-xl border border-gray-700">
-                                        <h3 class="text-xl font-bold mb-4 text-white">图谱说明</h3>
-                                        <p class="text-gray-400 text-sm leading-relaxed">
-                                            该知识图谱展示了贝尔摄入的各种食物与它们所属的<strong>地域</strong>、<strong>环境</strong>以及<strong>处理方式</strong>之间的复杂联系。
-                                            你可以通过拖动节点来查看关联性。绿色节点代表食物本体，黄色代表地域，蓝色代表生存环境，粉色代表处理技巧。
-                                        </p>
-                                    </div>
-                                </div>
-                            `}
-                        </main>
-
-                        <!-- Stats Footer -->
-                        <footer class="container mx-auto px-4 mt-12 pt-12 border-t border-gray-800 flex flex-col md:flex-row justify-between items-center text-gray-500 text-sm gap-4">
-                            <div class="flex gap-8">
-                                <div><span class="text-white font-bold">${FOOD_DATA.length}</span> 总补给项</div>
-                                <div><span class="text-white font-bold">${new Set(FOOD_DATA.map(f => f.region)).size}</span> 涉及地域</div>
-                                <div><span class="text-white font-bold">${Math.round(FOOD_DATA.reduce((acc, f) => acc + f.calories, 0))}</span> 总热量潜能</div>
-                            </div>
-                            <div>Survival Visualization Interface &copy; 2024</div>
-                        </footer>
-
-                        <!-- Modal -->
-                        ${FoodModal({ item: state.selectedFood, onClose: () => closeModal() })}
-                    </div>
-                `;
-
-                // 如果是图谱模式，创建知识图谱
-                if (state.viewMode === 'graph') {
-                    setTimeout(() => {
-                        const container = document.getElementById('graph-container');
-                        if (container) {
-                            container.innerHTML = '';
-                            container.appendChild(KnowledgeGraph());
-                        }
-                    }, 100);
-                }
-
-                // 添加全局函数
-                window.updateState = (newState) => {
-                    Object.assign(state, newState);
-                    updateApp();
-                };
-
-                window.selectFood = (foodId) => {
-                    const food = FOOD_DATA.find(item => item.id === foodId);
-                    if (food) {
-                        state.selectedFood = food;
-                        updateApp();
-                    }
-                };
-
-                window.closeModal = () => {
-                    state.selectedFood = null;
-                    updateApp();
-                };
-
-                window.resetFilters = () => {
-                    state.searchTerm = '';
-                    state.selectedCategory = '全部';
-                    updateApp();
-                };
-            }
-
-            // 初始渲染
-            updateApp();
-        }
-
-        // 页面加载完成后启动应用
-        document.addEventListener('DOMContentLoaded', App);
-    </script>
+<script src="app.js" defer></script>
 </body>
 </html>

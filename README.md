@@ -1,20 +1,37 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 荒野求生 · 贝爷食谱图鉴
 
-# Run and deploy your AI Studio app
+30 份《荒野求生》里出现过的极限补给，按风险、热量和地域归档。GitHub Pages 静态站点，入口是根目录的 `index.html`。
 
-This contains everything you need to run your app locally.
+## 这一版改了什么
 
-View your app in AI Studio: https://ai.studio/apps/drive/1CkhY-aTJuEaiGflfGZwGotP4u1LMB_uJ
+- **布局**：原来的通栏 Banner + 四列卡片，换成「首屏 → 四段滚动分镜 → 图鉴 → 装备区」。导航滚动后收窄，移动端单列。
+- **配图**：原来 30 张卡片都用 `picsum.photos` 随机照片，跟内容没关系。现在换成 5 张统一色板的荒野场景（山脊 / 雨林 / 荒漠 / 极地 / 海岸）和 1 张探险家插画；卡片按生存环境取图，上面叠程序化线条图鉴图标（15 个类别归到 10 种图形）。
+- **视差**：首屏六层按不同速率位移，叠指针微视差；四段分镜用 sticky 背景随滚动推近镜头并交叉淡入；卡片进场、顶部进度条、罗盘指针跟滚动转。
+- **3D**：CSS 3D 求生罗盘随指针倾斜，探险家标本卡做 3D 悬浮。
+- **前端**：去掉 Tailwind CDN 和 d3 CDN，改成 vanilla JS 单 IIFE + 内联 CSS。关系图换成按环境分扇区的确定性环形布局，不再依赖力导向模拟，断网也能用。支持 `prefers-reduced-motion` 和触屏降级。
 
-## Run Locally
+## 文件
 
-**Prerequisites:**  Node.js
+| 文件 | 作用 |
+| --- | --- |
+| `index.html` | 页面结构 + 全部主样式（内联） |
+| `app.js` | 30 条数据、渲染、交互、滚动引擎 |
+| `assets/scenes.css` | 6 张场景图，以 base64 data URI 内嵌 |
+| `tools/` | 图片处理与浏览器验收脚本，保留在本地工作副本，未随仓库部署 |
 
+图片内嵌进 CSS 是为了不依赖任何图床，仓库里没有二进制依赖也能正常显示。生成图在加入前统一做了裁切去水印和 WebP 压缩。
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 本地预览
+
+```bash
+python -m http.server 8000
+# 打开 http://localhost:8000
+```
+
+直接双击 `index.html` 也能看，相对路径资源在 `file://` 下可用。
+
+## 关于旧的 .tsx
+
+`App.tsx`、`FoodCard.tsx`、`FoodModal.tsx`、`KnowledgeGraph.tsx`、`constants.ts` 等是早期从 AI Studio 导出的 React/Vite 源码副本，页面已不再使用，保留作存档。线上页面只认 `index.html`。
+
+内容整理自节目片段，只做可视化展示，别照着吃。
